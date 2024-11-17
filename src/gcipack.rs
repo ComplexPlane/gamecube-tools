@@ -6,12 +6,14 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 const MAX_FILE_NAME_SIZE: usize = 0x20;
 const MAX_TITLE_SIZE: usize = 0x20;
 const MAX_DESCRIPTION_SIZE: usize = 0x20;
-const GAME_CODE_SIZE: usize = 6;
 
 const BANNER_SIZE: usize = 0x1800;
 const ICON_SIZE: usize = 0x800;
-const FILE_INFO_SIZE: usize = 0x200 - MAX_TITLE_SIZE - MAX_DESCRIPTION_SIZE;
+const FILE_HEADER_SIZE: usize = 0x200;
+const GAME_CODE_SIZE: usize = 6;
 const BLOCK_SIZE: usize = 0x2000;
+const FILE_HEADER_PADDING_SIZE: usize =
+    FILE_HEADER_SIZE - MAX_TITLE_SIZE - MAX_DESCRIPTION_SIZE - size_of::<u32>();
 
 #[derive(Debug)]
 pub enum StringKind {
@@ -96,11 +98,11 @@ struct GciHeader {
 #[repr(C)]
 struct GciFileMetadata {
     banner: [u8; BANNER_SIZE],
-    icon: [u8; BANNER_SIZE],
+    icon: [u8; ICON_SIZE],
     title: [u8; MAX_TITLE_SIZE],
     description: [u8; MAX_DESCRIPTION_SIZE],
     file_size: u32,
-    _padding: [u8; 0x200 - MAX_TITLE_SIZE - MAX_DESCRIPTION_SIZE - size_of::<u32>()],
+    _padding: [u8; FILE_HEADER_PADDING_SIZE],
 }
 
 fn validate(
@@ -111,13 +113,6 @@ fn validate(
     icon: &[u8],
     gamecode: &str,
 ) -> Result<(), GciPackError> {
-    validate_str(file_name, StringKind::FileName, MAX_FILE_NAME_SIZE)?;
-    validate_str(title, StringKind::Title, MAX_TITLE_SIZE)?;
-    validate_str(description, StringKind::Description, MAX_DESCRIPTION_SIZE)?;
-
-    if !gamecode.is_ascii() {
-        return Err(GciPackError::StringNonAscii(StringKind::GameCode));
-    }
     if gamecode.chars().count() != GAME_CODE_SIZE {
         return Err(GciPackError::StringInvalidSize {
             kind: StringKind::GameCode,
@@ -128,6 +123,11 @@ fn validate(
             ),
         });
     }
+
+    validate_str(file_name, StringKind::FileName, MAX_FILE_NAME_SIZE)?;
+    validate_str(title, StringKind::Title, MAX_TITLE_SIZE)?;
+    validate_str(description, StringKind::Description, MAX_DESCRIPTION_SIZE)?;
+    validate_str(gamecode, StringKind::GameCode, GAME_CODE_SIZE)?;
 
     if banner.len() != BANNER_SIZE {
         return Err(GciPackError::ImageInvalidSize {
@@ -191,14 +191,14 @@ fn generate_gci(
         comment_offset: (BANNER_SIZE + ICON_SIZE) as u32,
     };
 
-    // Build metadata
+    // Build file metadata
     let metadata = GciFileMetadata {
         banner: banner.try_into().unwrap(),
         icon: icon.try_into().unwrap(),
         title: str_to_padded_array(title),
         description: str_to_padded_array(description),
         file_size: file.len() as u32,
-        _padding: [0; FILE_INFO_SIZE - size_of::<u32>()],
+        _padding: [0; FILE_HEADER_PADDING_SIZE],
     };
 
     // Combine everything
