@@ -1,7 +1,8 @@
 use std::{fmt::Display, iter, time::SystemTime};
 
 use thiserror::Error;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
+use zerocopy::byteorder::big_endian;
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 const MAX_FILE_NAME_SIZE: usize = 0x20;
 const MAX_TITLE_SIZE: usize = 0x20;
@@ -82,16 +83,16 @@ struct GciHeader {
     unused0: u8,
     banner_fmt: u8,
     filename: [u8; MAX_FILE_NAME_SIZE],
-    last_modified: u32,
-    image_offset: u32,
-    icon_format: u16,
-    icon_speed: u16,
+    last_modified: big_endian::U32,
+    image_offset: big_endian::U32,
+    icon_format: big_endian::U16,
+    icon_speed: big_endian::U16,
     permissions: u8,
     copy_times: u8,
-    first_block_num: u16,
-    block_count: u16,
-    unused1: u16,
-    comment_offset: u32,
+    first_block_num: big_endian::U16,
+    block_count: big_endian::U16,
+    unused1: big_endian::U16,
+    comment_offset: big_endian::U32,
 }
 
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
@@ -101,7 +102,7 @@ struct GciFileMetadata {
     icon: [u8; ICON_SIZE],
     title: [u8; MAX_TITLE_SIZE],
     description: [u8; MAX_DESCRIPTION_SIZE],
-    file_size: u32,
+    file_size: big_endian::U32,
     _padding: [u8; FILE_HEADER_PADDING_SIZE],
 }
 
@@ -179,16 +180,16 @@ fn generate_gci(
         unused0: 0xff,
         banner_fmt: 2,
         filename: str_to_padded_array(file_name),
-        last_modified: get_modified_time_sec(),
-        image_offset: 0,
-        icon_format: 2,
-        icon_speed: 3,
+        last_modified: get_modified_time_sec().into(),
+        image_offset: 0.into(),
+        icon_format: 2.into(),
+        icon_speed: 3.into(),
         permissions: 4,
         copy_times: 0,
-        first_block_num: 0,
-        block_count: blocks as u16,
-        unused1: 0xff,
-        comment_offset: (BANNER_SIZE + ICON_SIZE) as u32,
+        first_block_num: 0.into(),
+        block_count: (blocks as u16).into(),
+        unused1: 0xff.into(),
+        comment_offset: ((BANNER_SIZE + ICON_SIZE) as u32).into(),
     };
 
     // Build file metadata
@@ -197,7 +198,7 @@ fn generate_gci(
         icon: icon.try_into().unwrap(),
         title: str_to_padded_array(title),
         description: str_to_padded_array(description),
-        file_size: file.len() as u32,
+        file_size: (file.len() as u32).into(),
         _padding: [0; FILE_HEADER_PADDING_SIZE],
     };
 
