@@ -78,8 +78,7 @@ fn validate_str(s: &str, kind: StringKind, max_size: usize) -> Result<(), GciPac
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
 #[repr(C)]
 struct GciHeader {
-    gamecode: [u8; 4],
-    company: [u8; 2],
+    gamecode: [u8; 6],
     unused0: u8,
     banner_fmt: u8,
     filename: [u8; MAX_FILE_NAME_SIZE],
@@ -103,7 +102,7 @@ struct GciFileMetadata {
     title: [u8; MAX_TITLE_SIZE],
     description: [u8; MAX_DESCRIPTION_SIZE],
     file_size: big_endian::U32,
-    _padding: [u8; FILE_HEADER_PADDING_SIZE],
+    padding: [u8; FILE_HEADER_PADDING_SIZE],
 }
 
 fn validate(
@@ -146,19 +145,13 @@ fn validate(
     Ok(())
 }
 
-fn append(v: &mut Vec<u8>, n: usize) -> &mut [u8] {
-    let old_len = v.len();
-    v.extend(iter::repeat(0).take(n));
-    &mut v[old_len..]
-}
-
 fn get_modified_time_sec() -> u32 {
     let base = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(946684800); // Jan 1 2000
     let now = SystemTime::now();
     now.duration_since(base).unwrap().as_secs() as u32
 }
 
-fn generate_gci(
+pub fn gcipack(
     file: &[u8],
     file_name: &str,
     title: &str,
@@ -166,7 +159,7 @@ fn generate_gci(
     banner: &[u8],
     icon: &[u8],
     gamecode: &str,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, GciPackError> {
     let gci_file_size = size_of::<GciFileMetadata>() + file.len();
     let blocks = gci_file_size.div_ceil(BLOCK_SIZE);
     let gci_file_size = blocks * BLOCK_SIZE;
@@ -175,11 +168,10 @@ fn generate_gci(
 
     // Build header
     let header = GciHeader {
-        gamecode: gamecode[0..4].as_bytes().try_into().unwrap(),
-        company: gamecode[4..6].as_bytes().try_into().unwrap(),
+        gamecode: str_to_array(gamecode, StringKind::GameCode)?,
         unused0: 0xff,
         banner_fmt: 2,
-        filename: str_to_padded_array(file_name),
+        filename: str_to_padded_array(file_name, StringKind::FileName)?,
         last_modified: get_modified_time_sec().into(),
         image_offset: 0.into(),
         icon_format: 2.into(),
@@ -193,13 +185,25 @@ fn generate_gci(
     };
 
     // Build file metadata
+    let banner = banner
+        .try_into()
+        .map_err(|_| GciPackError::ImageInvalidSize {
+            kind: ImageKind::Banner,
+            info: format!("should be {} (96x32 RGB5A3)", BANNER_SIZE),
+        })?;
+    let icon = icon
+        .try_into()
+        .map_err(|_| GciPackError::ImageInvalidSize {
+            kind: ImageKind::Icon,
+            info: format!("should be {} (32x32 RGB5A3)", ICON_SIZE),
+        })?;
     let metadata = GciFileMetadata {
-        banner: banner.try_into().unwrap(),
-        icon: icon.try_into().unwrap(),
-        title: str_to_padded_array(title),
-        description: str_to_padded_array(description),
+        banner,
+        icon,
+        title: str_to_padded_array(title, StringKind::Title)?,
+        description: str_to_padded_array(description, StringKind::Description)?,
         file_size: (file.len() as u32).into(),
-        _padding: [0; FILE_HEADER_PADDING_SIZE],
+        padding: [0; FILE_HEADER_PADDING_SIZE],
     };
 
     // Combine everything
@@ -208,32 +212,39 @@ fn generate_gci(
     gci.extend_from_slice(file);
     gci.extend_from_slice(&vec![0; gci_file_size - file.len()]);
 
-    gci
+    Ok(gci)
 }
 
-fn str_to_padded_array<const N: usize>(input: &str) -> [u8; N] {
+fn str_to_array<const N: usize>(input: &str, kind: StringKind) -> Result<[u8; N], GciPackError> {
+    if !input.is_ascii() {
+        return Err(GciPackError::StringNonAscii(kind));
+    }
+
+    input
+        .as_bytes()
+        .try_into()
+        .map_err(|_| GciPackError::StringInvalidSize {
+            kind,
+            info: format!("expected {}, got {}", N, input.len()),
+        })
+}
+
+fn str_to_padded_array<const N: usize>(
+    input: &str,
+    kind: StringKind,
+) -> Result<[u8; N], GciPackError> {
+    if !input.is_ascii() {
+        return Err(GciPackError::StringNonAscii(kind));
+    }
+
+    if input.len() > N {
+        return Err(GciPackError::StringInvalidSize {
+            kind,
+            info: format!("max size is {}, got {}", N, input.len()),
+        });
+    }
+
     let mut array = [0; N];
     array[..input.len()].copy_from_slice(input.as_bytes());
-    array
-}
-
-pub fn gcipack(
-    file: &[u8],
-    file_name: &str,
-    title: &str,
-    description: &str,
-    banner: &[u8],
-    icon: &[u8],
-    gamecode: &str,
-) -> Result<Vec<u8>, GciPackError> {
-    validate(file_name, title, description, banner, icon, gamecode)?;
-    Ok(generate_gci(
-        file,
-        file_name,
-        title,
-        description,
-        banner,
-        icon,
-        gamecode,
-    ))
+    Ok(array)
 }
