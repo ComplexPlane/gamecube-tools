@@ -1,5 +1,10 @@
-use std::{fs::File, io::Write, path::PathBuf};
+use std::{
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
+use anyhow::Context;
 use gamecube_tools::gcipack;
 
 use clap::Parser;
@@ -16,11 +21,18 @@ struct GciPackArgs {
     gamecode: String,
 }
 
+fn read_file<P>(p: P) -> anyhow::Result<Vec<u8>>
+where
+    P: AsRef<Path>,
+{
+    std::fs::read(&p).with_context(|| format!("cannot read {}", p.as_ref().to_string_lossy()))
+}
+
 fn main() -> anyhow::Result<()> {
     let args = GciPackArgs::parse();
-    let input = std::fs::read(&args.input)?;
-    let banner = std::fs::read(&args.banner)?;
-    let icon = std::fs::read(&args.icon)?;
+    let input = read_file(&args.input)?;
+    let banner = read_file(&args.banner)?;
+    let icon = read_file(&args.icon)?;
     let gci = gcipack::gcipack(
         &input,
         &args.file_name,
