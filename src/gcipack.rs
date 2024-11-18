@@ -1,4 +1,4 @@
-use std::{fmt::Display, iter, time::SystemTime};
+use std::{fmt::Display, time::SystemTime};
 
 use thiserror::Error;
 use zerocopy::byteorder::big_endian;
@@ -11,7 +11,6 @@ const MAX_DESCRIPTION_SIZE: usize = 0x20;
 const BANNER_SIZE: usize = 0x1800;
 const ICON_SIZE: usize = 0x800;
 const FILE_HEADER_SIZE: usize = 0x200;
-const GAME_CODE_SIZE: usize = 6;
 const BLOCK_SIZE: usize = 0x2000;
 const FILE_HEADER_PADDING_SIZE: usize =
     FILE_HEADER_SIZE - MAX_TITLE_SIZE - MAX_DESCRIPTION_SIZE - size_of::<u32>();
@@ -60,19 +59,6 @@ pub enum GciPackError {
     StringInvalidSize { kind: StringKind, info: String },
     #[error("{0} is non-ASCII")]
     StringNonAscii(StringKind),
-}
-
-fn validate_str(s: &str, kind: StringKind, max_size: usize) -> Result<(), GciPackError> {
-    if !s.is_ascii() {
-        return Err(GciPackError::StringNonAscii(kind));
-    }
-    if s.len() > max_size {
-        return Err(GciPackError::StringInvalidSize {
-            kind,
-            info: format!("max size is {}, found {}", max_size, s.len()),
-        });
-    }
-    Ok(())
 }
 
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
