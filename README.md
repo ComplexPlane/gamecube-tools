@@ -7,9 +7,13 @@ Tools for converting and packaging GameCube binaries.
 Generate a `.gci` savefile containing an arbitrary file.
 
 ```sh
-gcipack --help
+cargo run --bin gcipack -- --help
 ```
 
 ## elf2rel
 
 TODO
+
+```sh
+cargo run --bin elf2rel -- --help
+```
