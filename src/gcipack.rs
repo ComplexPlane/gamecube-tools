@@ -105,46 +105,6 @@ struct GciFileMetadata {
     padding: [u8; FILE_HEADER_PADDING_SIZE],
 }
 
-fn validate(
-    file_name: &str,
-    title: &str,
-    description: &str,
-    banner: &[u8],
-    icon: &[u8],
-    gamecode: &str,
-) -> Result<(), GciPackError> {
-    if gamecode.chars().count() != GAME_CODE_SIZE {
-        return Err(GciPackError::StringInvalidSize {
-            kind: StringKind::GameCode,
-            info: format!(
-                "expected {}, found {}",
-                GAME_CODE_SIZE,
-                gamecode.chars().count()
-            ),
-        });
-    }
-
-    validate_str(file_name, StringKind::FileName, MAX_FILE_NAME_SIZE)?;
-    validate_str(title, StringKind::Title, MAX_TITLE_SIZE)?;
-    validate_str(description, StringKind::Description, MAX_DESCRIPTION_SIZE)?;
-    validate_str(gamecode, StringKind::GameCode, GAME_CODE_SIZE)?;
-
-    if banner.len() != BANNER_SIZE {
-        return Err(GciPackError::ImageInvalidSize {
-            kind: ImageKind::Banner,
-            info: format!("should be {} (96x32 RGB5A3)", BANNER_SIZE),
-        });
-    }
-    if icon.len() != ICON_SIZE {
-        return Err(GciPackError::ImageInvalidSize {
-            kind: ImageKind::Icon,
-            info: format!("should be {} (32x32 RGB5A3)", ICON_SIZE),
-        });
-    }
-
-    Ok(())
-}
-
 fn get_modified_time_sec() -> u32 {
     let base = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(946684800); // Jan 1 2000
     let now = SystemTime::now();
