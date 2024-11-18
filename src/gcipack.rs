@@ -160,8 +160,8 @@ pub fn gcipack(
     icon: &[u8],
     gamecode: &str,
 ) -> Result<Vec<u8>, GciPackError> {
-    let gci_file_size = size_of::<GciFileMetadata>() + file.len();
-    let blocks = gci_file_size.div_ceil(BLOCK_SIZE);
+    let unpadded_gci_file_size = size_of::<GciFileMetadata>() + file.len();
+    let blocks = unpadded_gci_file_size.div_ceil(BLOCK_SIZE);
     let gci_file_size = blocks * BLOCK_SIZE;
 
     let mut gci = Vec::with_capacity(size_of::<GciHeader>() + gci_file_size);
@@ -210,7 +210,7 @@ pub fn gcipack(
     gci.extend_from_slice(header.as_bytes());
     gci.extend_from_slice(metadata.as_bytes());
     gci.extend_from_slice(file);
-    gci.extend_from_slice(&vec![0; gci_file_size - file.len()]);
+    gci.extend_from_slice(&vec![0; gci_file_size - unpadded_gci_file_size]);
 
     Ok(gci)
 }
