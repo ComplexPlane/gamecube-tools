@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use anyhow::{anyhow, Context};
 use anyhow::{bail, ensure};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use object::read::elf::FileHeader;
 use object::{
-    Architecture, BinaryFormat, Endianness, Object, ObjectSection, ObjectSymbol, RelocationFlags,
-    RelocationTarget, SectionIndex, SectionKind, SymbolSection,
+    elf, Architecture, BigEndian, BinaryFormat, Endianness, Object, ObjectSection, ObjectSymbol,
+    RelocationFlags, RelocationTarget, SectionIndex, SectionKind, SymbolSection,
 };
 use zerocopy::{big_endian, Immutable, IntoBytes, KnownLayout};
 
@@ -182,10 +183,14 @@ fn parse_symbol_map(buf: &[u8]) -> anyhow::Result<HashMap<&str, u32>> {
     Ok(map)
 }
 
-fn write_sections(elf: &object::File, rel: &mut Vec<u8>) -> anyhow::Result<SectionStats> {
+fn write_sections(
+    elf: &object::File,
+    rel: &mut Vec<u8>,
+    section_count: u32,
+) -> anyhow::Result<SectionStats> {
     let section_info_offset = rel.len();
     // Write section infos first, before section offsets are determined
-    for _ in elf.sections() {
+    for _ in 0..section_count {
         rel.extend_from_slice(SectionInfo::default().as_bytes());
     }
 
@@ -196,7 +201,17 @@ fn write_sections(elf: &object::File, rel: &mut Vec<u8>) -> anyhow::Result<Secti
     let mut total_bss_size = 0;
     let mut max_align = 2;
     let mut max_bss_align = 2;
-    for section in elf.sections() {
+    for section_idx in 0..section_count {
+        let Ok(section) = elf.section_by_index(SectionIndex(section_idx as usize)) else {
+            // Write dummy sections not included in elf.sections()
+            let section_info = SectionInfo {
+                offset: 0.into(),
+                size: 0.into(),
+            };
+            section_info_buffer.extend_from_slice(section_info.as_bytes());
+            continue;
+        };
+
         let valid_section_name = VALID_REL_SECTIONS.iter().any(|cand_name| {
             section.name().map_or(false, |section_name| {
                 &section_name == cand_name || section_name.starts_with(&format!("{cand_name}."))
@@ -505,6 +520,7 @@ fn write_module_header(
     elf: &object::File,
     rel: &mut [u8],
     module_id: u32,
+    section_count: u32,
     rel_version: RelVersion,
     section_stats: &SectionStats,
     relocation_stats: &RelocationStats,
@@ -517,7 +533,7 @@ fn write_module_header(
         id: module_id.into(),
         prev_link: 0.into(),
         next_link: 0.into(),
-        section_count: (elf.sections().count() as u32).into(),
+        section_count: section_count.into(),
         section_info_offset: section_stats.section_info_offset.into(),
         name_offset: 0.into(),
         name_size: 0.into(),
@@ -577,6 +593,8 @@ pub fn elf2rel(
     rel_version: RelVersion,
 ) -> anyhow::Result<Vec<u8>> {
     let elf = parse_elf(elf_buf)?;
+    let raw_header = elf::FileHeader32::<BigEndian>::parse(elf_buf)?;
+    let section_count = raw_header.e_shnum.get(BigEndian) as u32;
 
     let mut rel = Vec::new();
 
@@ -589,7 +607,7 @@ pub fn elf2rel(
         rel.extend_from_slice(ModuleV3HeaderAddendum::default().as_bytes());
     }
 
-    let section_stats = write_sections(&elf, &mut rel)?;
+    let section_stats = write_sections(&elf, &mut rel, section_count)?;
     let relocations =
         extract_relocations(&elf, symbol_map, module_id, &section_stats.section_offsets)?;
     let relocation_stats = write_relocations(
@@ -602,6 +620,7 @@ pub fn elf2rel(
         &elf,
         &mut rel,
         module_id,
+        section_count,
         rel_version,
         &section_stats,
         &relocation_stats,
