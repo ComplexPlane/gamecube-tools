@@ -12,12 +12,19 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct GciPackArgs {
+    /// The payload to store inside the GCI
     input: PathBuf,
+    /// The internal name of the GCI file
     file_name: String,
+    /// Game name
     title: String,
+    /// File description
     description: String,
+    /// Path to banner image
     banner: PathBuf,
+    /// Path to icon image
     icon: PathBuf,
+    /// Six character gamecode
     gamecode: String,
 }
 

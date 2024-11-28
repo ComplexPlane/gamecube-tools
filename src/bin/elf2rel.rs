@@ -13,12 +13,16 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Elf2RelArgs {
+    /// Path to input ELF file
     input_elf: PathBuf,
+    /// Path to input symbol map
     input_symbol_map: PathBuf,
+    /// Path to output REL file
     #[arg(short, long)]
     output_rel: Option<PathBuf>,
     #[arg(long, default_value_t = 0x1000)]
     rel_id: u32,
+    /// REL file format version (1, 2, or 3)
     #[arg(long, default_value_t = 3)]
     rel_version: u8,
 }
